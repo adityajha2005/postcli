@@ -45,11 +45,12 @@ pip install -e .
 
 3. Edit `template.txt`, `contacts.csv`, and `links.json` with your content.
 
-## Usage
+## Demo
 
-Preview emails without sending:
+From a directory where you've run `postcli init` (or use `postcli/examples/` paths when in the repo):
+
 ```bash
-postcli send --template template.txt --contacts contacts.csv --subject "Hello" --dry-run
+postcli send --template template.txt --contacts contacts.csv --subject "Hello {{ name }}" --dry-run
 ```
 
 Send for real:
@@ -62,6 +63,7 @@ postcli send --template template.txt --contacts contacts.csv --subject "Hello"
 | Command | Description |
 |---------|-------------|
 | `postcli init` | Create template.txt, contacts.csv, links.json, .env.example |
+| `postcli import data.json` | Convert JSON → contacts.csv |
 | `postcli validate` | Validate template, CSV, links.json, SMTP config |
 | `postcli send` | Send emails |
 
@@ -76,6 +78,7 @@ postcli send --template template.txt --contacts contacts.csv --subject "Hello"
 | `--delay N` | Seconds to wait between sends (default: 0) |
 | `--limit N` | Max contacts to send to (0 = all) |
 | `--skip-contacted` | Skip emails already in contacted.csv |
+| `--mutate` | **Opt-in file changes:** append sent to `contacted.csv`, remove from contacts file |
 | `--dry-run` | Preview only, no emails sent |
 
 ### Template
@@ -110,9 +113,12 @@ John Smith,Tech Co,john@example.com
 
 ### Tracking sent contacts
 
-After each successful send:
-- Sent contacts are appended to `contacted.csv` (same folder as your contacts file)
-- Sent contacts are removed from your main contacts file
+> **postcli does not modify your files by default.**  
+> Use `--mutate` to enable: appending sent contacts to `contacted.csv` and removing them from your main contacts file.
+
+By default, postcli leaves your contacts file untouched. Pass `--mutate` if you want:
+- Sent contacts appended to `contacted.csv` (same folder as your contacts file)
+- Sent contacts removed from your main contacts file
 
 ### Validate
 
@@ -127,6 +133,26 @@ postcli validate --template template.txt --contacts contacts.csv --links --smtp
 postcli init
 postcli init --dir ./my-campaign
 ```
+
+### Import JSON → contacts.csv
+
+Drop a JSON file and run:
+
+```bash
+postcli import data.json
+postcli import yc_founders.json -o contacts.csv
+```
+
+| Option | Description |
+|--------|-------------|
+| `JSON_FILE` | Path to JSON file (required) |
+| `-o`, `--output` | Output CSV path (default: contacts.csv) |
+
+**Supported formats:**
+- **founders:** `{ "company": "...", "founders": [{ "name": "..." }], "companyEmails": ["..."] }`
+- **Flat:** `{ "name": "...", "company": "...", "email": "..." }`
+
+Skips records without `companyEmails` or `email`. Uses first founder's name when available.
 
 ## License
 

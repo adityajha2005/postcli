@@ -44,8 +44,9 @@ def cli():
 @click.option("--delay", type=int, default=0, help="Seconds to wait between sends (default: 0).")
 @click.option("--limit", type=int, default=0, help="Max contacts to send to (0 = all).")
 @click.option("--skip-contacted", is_flag=True, help="Skip emails already in contacted.csv.")
+@click.option("--mutate", is_flag=True, help="Append sent contacts to contacted.csv and remove them from contacts file (opt-in).")
 @click.option("--dry-run", is_flag=True, help="Preview emails without sending.")
-def send(template, contacts, subject, from_name, delay, limit, skip_contacted, dry_run):
+def send(template, contacts, subject, from_name, delay, limit, skip_contacted, mutate, dry_run):
     template_path = Path(template)
     contacts_path = Path(contacts)
 
@@ -134,7 +135,7 @@ def send(template, contacts, subject, from_name, delay, limit, skip_contacted, d
         if delay > 0 and i < len(rows) - 1:
             time.sleep(delay)
 
-    if not dry_run and sent:
+    if not dry_run and sent and mutate:
         contacted_path = contacts_path.parent / "contacted.csv"
         append_contacted(contacted_path, sent)
         remaining = [c for c in rows if c["email"] not in {s["email"] for s in sent}]
@@ -228,6 +229,55 @@ def validate(template, contacts, links, smtp):
 
     if errors:
         raise SystemExit(1)
+
+
+@cli.command("import")
+@click.argument("json_file", type=click.Path(exists=True))
+@click.option("--output", "-o", default="contacts.csv", help="Output CSV path (default: contacts.csv).")
+def import_cmd(json_file, output):
+    """Convert JSON to contacts.csv. Supports YC founders format (company, founders[].name, companyEmails[]) or flat {name, company, email}."""
+    import json
+
+    path = Path(json_file)
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+
+    if not isinstance(data, list):
+        data = [data]
+
+    rows: list[dict[str, str]] = []
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+
+        # Email: companyEmails[0] (YC format) or email (flat)
+        emails = item.get("companyEmails")
+        if isinstance(emails, list) and emails:
+            email = str(emails[0] or "").strip()
+        else:
+            email = str(item.get("email") or "").strip()
+        if not email:
+            continue
+
+        # Name: founders[0].name (YC format) or name (flat)
+        name = str(item.get("name") or "").strip()
+        if not name:
+            founders = item.get("founders")
+            if isinstance(founders, list) and founders and isinstance(founders[0], dict):
+                name = str(founders[0].get("name") or "").strip()
+
+        # Company
+        company = str(item.get("company") or item.get("company_name") or item.get("organization") or "").strip()
+
+        rows.append({"name": name, "company": company, "email": email})
+
+    if not rows:
+        print("[red]No records with email found in JSON.[/red]")
+        raise SystemExit(1)
+
+    out_path = Path(output)
+    write_contacts(out_path, rows)
+    print(f"[green]Wrote {len(rows)} contact(s) to {out_path}[/green]")
 
 
 @cli.command()

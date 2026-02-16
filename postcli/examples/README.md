@@ -28,6 +28,10 @@ Use these starter files to send your first emails.
 
 ## Tracking sent contacts
 
-After each successful send:
-- Sent contacts are appended to `contacted.csv` (same folder as your contacts file)
-- Sent contacts are removed from your main contacts file
+By default, postcli **does not modify** your files. Use `--mutate` to enable:
+- Sent contacts appended to `contacted.csv` (same folder as your contacts file)
+- Sent contacts removed from your main contacts file
+
+```bash
+postcli send --template template.txt --contacts contacts.csv --subject "Hello" --mutate
+```
