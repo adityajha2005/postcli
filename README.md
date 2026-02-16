@@ -1,6 +1,16 @@
 # postcli
 
+![Python](https://img.shields.io/badge/python-3.9+-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+
 Send handcrafted emails from your terminal. Template your messages with Jinja2, keep contacts in CSV, and send via SMTP.
+
+- [Install](#install)
+- [Setup](#setup)
+- [Demo](#demo)
+- [Commands](#commands)
+- [Import JSON](#import-json--contactscsv)
+- [License](#license)
 
 ## Install
 
@@ -57,6 +67,48 @@ Send for real (default subject: "Interested in {{ company }}"):
 ```bash
 postcli send --template template.txt --contacts contacts.csv
 postcli send --template template.txt --contacts contacts.csv --subject "Quick question for {{ name }}"
+```
+
+### Example Output
+
+Real workflow: init → import → validate → send
+
+```
+$ postcli init
+Created template.txt
+Created contacts.csv
+Created links.json
+Created .env.example
+
+$ postcli import normalized_data.json
+Wrote 10 contact(s) to contacts.csv
+
+$ postcli validate --template template.txt --contacts contacts.csv
+Template OK: template.txt
+Contacts OK: 10 row(s) in contacts.csv
+
+$ postcli send --template template.txt --contacts contacts.csv --limit 2 --dry-run
+Limited to 2 contact(s)
+postcli – 2 contact(s)
+Dry run – preview only, no emails sent
+
+╭─ To: founders@xyz.com | Subject: Interested in xyz ─────────────────────╮
+│ Hi Caleb Harris,                                                             │
+│ I'm interested in helping xyz:                                               │
+│ ...                                                                          │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ To: founders@abc.com | Subject: Interested in 14.ai ─────────────────╮
+│ Hi Marie Schneegans,                                                         │
+│ I'm interested in helping abc.ai:                                             │
+│ ...                                                                          │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+Without `--dry-run` (with `--mutate`):
+```
+Sent to founders@xyz.com
+Sent to founders@abc.com
+Moved 2 contact(s) to contacted.csv
 ```
 
 ### Commands
@@ -158,3 +210,7 @@ Skips records without `companyEmails` or `email`. Uses first founder's name when
 ## License
 
 MIT
+
+---
+
+If this saved you from copy-pasting 100 emails, consider giving it a ⭐
