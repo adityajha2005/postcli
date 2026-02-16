@@ -7,20 +7,31 @@ from pathlib import Path
 import click
 from dotenv import load_dotenv
 from jinja2 import Environment, FileSystemLoader, TemplateNotFound, UndefinedError
-from rich import print
+from rich.console import Console
 from rich.panel import Panel
+from rich.rule import Rule
 
 from postcli.contacts import append_contacted, load_contacted_emails, load_contacts, write_contacts
 from postcli.links import load_links
 
 load_dotenv()
 
+console = Console()
+
+
+def _version():
+    try:
+        from importlib.metadata import version
+        return version("postcli")
+    except Exception:
+        return "0.1.0"
+
 
 def _get_smtp_config():
     required = ("EMAIL_ADDRESS", "EMAIL_PASSWORD", "SMTP_SERVER", "SMTP_PORT")
     missing = [k for k in required if not os.getenv(k)]
     if missing:
-        print(f"[red]Missing env vars: {', '.join(missing)}. Add them to .env[/red]")
+        console.print(f"[red]✗ Missing env vars: {', '.join(missing)}. Add them to .env[/red]")
         raise SystemExit(1)
     return {
         "address": os.getenv("EMAIL_ADDRESS"),
@@ -51,49 +62,72 @@ def send(template, contacts, subject, from_name, delay, limit, skip_contacted, m
     contacts_path = Path(contacts)
 
     if not template_path.exists():
-        print(f"[red]Template not found: {template}[/red]")
+        console.print(f"[red]✗ Template not found: {template}[/red]")
         raise SystemExit(1)
     if not contacts_path.exists():
-        print(f"[red]Contacts file not found: {contacts}[/red]")
+        console.print(f"[red]✗ Contacts file not found: {contacts}[/red]")
         raise SystemExit(1)
 
     try:
         rows = load_contacts(contacts_path)
     except ValueError as e:
-        print(f"[red]{e}[/red]")
+        console.print(f"[red]✗ {e}[/red]")
         raise SystemExit(1)
 
     if not rows:
-        print("[yellow]No contacts in CSV.[/yellow]")
+        console.print("[yellow]✗ No contacts in CSV.[/yellow]")
         return
 
     already_contacted = load_contacted_emails(contacts_path) if skip_contacted else set()
     if already_contacted:
         rows = [r for r in rows if r["email"] not in already_contacted]
         if not rows:
-            print("[yellow]All contacts already in contacted.csv. Nothing to send.[/yellow]")
+            console.print("[yellow]✗ All contacts already in contacted.csv. Nothing to send.[/yellow]")
             return
-        print(f"[dim]Skipped {len(already_contacted)} already contacted[/dim]")
 
     if limit > 0:
         rows = rows[:limit]
-        print(f"[dim]Limited to {limit} contact(s)[/dim]")
 
-    print(f"[bold green]postcli[/bold green] – {len(rows)} contact(s)")
-    if dry_run:
-        print("[dim]Dry run – preview only, no emails sent[/dim]\n")
+    # Header
+    console.print(f"postcli {_version()}")
+    console.print(Rule(style="dim"))
+    if already_contacted:
+        console.print(f"[dim]Skipped {len(already_contacted)} already contacted[/dim]")
+    if limit > 0:
+        console.print(f"[dim]Limited to {limit} contact(s)[/dim]")
+
+    console.print(f"[green]✓[/green] Loaded {len(rows)} contact(s)")
 
     loader = FileSystemLoader(template_path.parent)
     env = Environment(loader=loader)
     subject_tmpl = Environment().from_string(subject)
     tmpl = env.get_template(template_path.name)
+    console.print("[green]✓[/green] Template validated")
 
     links = load_links(contacts_path.parent)
 
     if not dry_run:
         cfg = _get_smtp_config()
         from_addr = f"{from_name} <{cfg['address']}>" if from_name else cfg["address"]
+        try:
+            with smtplib.SMTP(cfg["server"], cfg["port"], timeout=10) as smtp:
+                smtp.starttls()
+                smtp.login(cfg["address"], cfg["password"])
+            console.print("[green]✓[/green] SMTP connected")
+        except smtplib.SMTPAuthenticationError:
+            console.print("[red]✗ SMTP auth failed. Check EMAIL_ADDRESS and EMAIL_PASSWORD (use Gmail App Password if 2FA).[/red]")
+            raise SystemExit(1)
+        except Exception as e:
+            console.print(f"[red]✗ SMTP error: {e}[/red]")
+            raise SystemExit(1)
 
+        if delay == 0 and len(rows) > 1:
+            console.print("[yellow]⚠ No delay set. Gmail may throttle high volume sends.[/yellow]")
+    else:
+        console.print(Rule(" DRY RUN ", style="yellow"))
+        console.print("[yellow]~ Dry run mode — no emails sent[/yellow]\n")
+
+    total = len(rows)
     sent: list[dict] = []
 
     for i, contact in enumerate(rows):
@@ -102,7 +136,7 @@ def send(template, contacts, subject, from_name, delay, limit, skip_contacted, m
             rendered = tmpl.render(**ctx)
             rendered_subject = subject_tmpl.render(**ctx)
         except UndefinedError as e:
-            print(f"[red]Template error for {contact.get('email', '?')}: {e}[/red]")
+            console.print(f"[red]✗ Template error for {contact.get('email', '?')}: {e}[/red]")
             raise SystemExit(1)
 
         to_addr = contact.get("email", "").strip()
@@ -110,7 +144,7 @@ def send(template, contacts, subject, from_name, delay, limit, skip_contacted, m
             continue
 
         if dry_run:
-            print(Panel(rendered, title=f"To: {to_addr} | Subject: {rendered_subject}", title_align="left", border_style="blue"))
+            console.print(Panel(rendered, title=f"To: {to_addr} | Subject: {rendered_subject}", title_align="left", border_style="blue"))
             continue
 
         msg = MIMEText(rendered, "plain", "utf-8")
@@ -119,17 +153,19 @@ def send(template, contacts, subject, from_name, delay, limit, skip_contacted, m
         msg["To"] = to_addr
 
         try:
+            t0 = time.perf_counter()
             with smtplib.SMTP(cfg["server"], cfg["port"]) as smtp:
                 smtp.starttls()
                 smtp.login(cfg["address"], cfg["password"])
                 smtp.sendmail(cfg["address"], to_addr, msg.as_string())
-            print(f"[green]Sent to {to_addr}[/green]")
+            elapsed_ms = int((time.perf_counter() - t0) * 1000)
+            console.print(f"[green]✓[/green] [{i + 1}/{total}] Sent to {to_addr} ({elapsed_ms}ms)")
             sent.append(contact)
         except smtplib.SMTPAuthenticationError:
-            print("[red]SMTP auth failed. Check EMAIL_ADDRESS and EMAIL_PASSWORD (use Gmail App Password if 2FA).[/red]")
+            console.print("[red]✗ SMTP auth failed. Check EMAIL_ADDRESS and EMAIL_PASSWORD (use Gmail App Password if 2FA).[/red]")
             raise SystemExit(1)
         except Exception as e:
-            print(f"[red]Failed to send to {to_addr}: {e}[/red]")
+            console.print(f"[red]✗ [{i + 1}/{total}] Failed to send to {to_addr}: {e}[/red]")
             raise SystemExit(1)
 
         if delay > 0 and i < len(rows) - 1:
@@ -140,7 +176,7 @@ def send(template, contacts, subject, from_name, delay, limit, skip_contacted, m
         append_contacted(contacted_path, sent)
         remaining = [c for c in rows if c["email"] not in {s["email"] for s in sent}]
         write_contacts(contacts_path, remaining)
-        print(f"[dim]Moved {len(sent)} contact(s) to {contacted_path}[/dim]")
+        console.print(f"[green]✓[/green] Moved {len(sent)} contact(s) to {contacted_path}")
 
 
 @cli.command()
@@ -200,7 +236,7 @@ def validate(template, contacts, links, smtp):
     if links:
         lp = cwd / "links.json"
         if not lp.exists():
-            print("[dim]links.json not found (optional)[/dim]")
+            console.print("[dim]links.json not found (optional)[/dim]")
         else:
             try:
                 import json
@@ -223,9 +259,9 @@ def validate(template, contacts, links, smtp):
             errors.append(f"SMTP error: {e}")
 
     for msg in ok:
-        print(f"[green]{msg}[/green]")
+        console.print(f"[green]✓ {msg}[/green]")
     for msg in errors:
-        print(f"[red]{msg}[/red]")
+        console.print(f"[red]✗ {msg}[/red]")
 
     if errors:
         raise SystemExit(1)
@@ -272,12 +308,12 @@ def import_cmd(json_file, output):
         rows.append({"name": name, "company": company, "email": email})
 
     if not rows:
-        print("[red]No records with email found in JSON.[/red]")
+        console.print("[red]✗ No records with email found in JSON.[/red]")
         raise SystemExit(1)
 
     out_path = Path(output)
     write_contacts(out_path, rows)
-    print(f"[green]Wrote {len(rows)} contact(s) to {out_path}[/green]")
+    console.print(f"[green]✓ Wrote {len(rows)} contact(s) to {out_path}[/green]")
 
 
 @cli.command()
@@ -295,7 +331,7 @@ def init(target_dir):
     dst.mkdir(parents=True, exist_ok=True)
 
     if not src.exists():
-        print("[red]Examples folder not found.[/red]")
+        console.print("[red]✗ Examples folder not found.[/red]")
         raise SystemExit(1)
 
     files = ["template.txt", "contacts.csv", "links.json"]
@@ -303,15 +339,15 @@ def init(target_dir):
         sp = src / f
         dp = dst / f
         if dp.exists():
-            print(f"[yellow]Skip {f} (exists)[/yellow]")
+            console.print(f"[yellow]~ Skip {f} (exists)[/yellow]")
         else:
             shutil.copy(sp, dp)
-            print(f"[green]Created {dp}[/green]")
+            console.print(f"[green]✓ Created {dp}[/green]")
 
     env_src = src / ".env.example"
     env_dst = dst / ".env.example"
     if env_src.exists() and not env_dst.exists():
         shutil.copy(env_src, env_dst)
-        print(f"[green]Created {env_dst}[/green]")
+        console.print(f"[green]✓ Created {env_dst}[/green]")
     elif env_dst.exists():
-        print(f"[yellow]Skip .env.example (exists)[/yellow]")
+        console.print(f"[yellow]~ Skip .env.example (exists)[/yellow]")
