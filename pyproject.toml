@@ -1,0 +1,23 @@
+[project]
+name = "postcli"
+version = "0.1.0"
+description = "Send handcrafted cold emails from your terminal."
+authors = [
+    { name="Aditya Kumar Jha" }
+]
+dependencies = [
+    "click",
+    "jinja2",
+    "rich",
+    "python-dotenv"
+]
+
+[project.scripts]
+postcli = "postcli.cli:cli"
+
+[tool.setuptools.package-data]
+postcli = ["examples/*", "examples/.env.example"]
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"

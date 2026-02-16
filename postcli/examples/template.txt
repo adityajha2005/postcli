@@ -1,0 +1,21 @@
+Hi {{ name }},
+
+TLDR: [Your one-line value prop – e.g. Software engineer with X years experience. I help companies build/scale/ship [relevant focus].]
+
+[Your expanded pitch – e.g. I've built and shipped [systems/products/features], contributed to open source, and worked across [your stack: frontend, backend, infra, etc.].]
+
+I'm interested in helping {{ company }}:
+
+- [Add value prop 1 – e.g. Build and ship features]
+- [Add value prop 2 – e.g. Improve DX or integrations]
+- [Add value prop 3 – e.g. Scale systems / own a domain]
+
+{% if github %}GitHub: {{ github }}
+{% endif %}{% if x %}X: {{ x }}
+{% endif %}{% if linkedin %}LinkedIn: {{ linkedin }}
+{% endif %}{% if portfolio %}Portfolio: {{ portfolio }}
+{% endif %}{% if resume %}Resume: {{ resume }}
+{% endif %}
+Would love to chat if you're open to it.
+
+{{ sender_name | default('[Your name]') }}
