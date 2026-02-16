@@ -53,9 +53,10 @@ From a directory where you've run `postcli init` (or use `postcli/examples/` pat
 postcli send --template template.txt --contacts contacts.csv --subject "Hello {{ name }}" --dry-run
 ```
 
-Send for real:
+Send for real (default subject: "Interested in {{ company }}"):
 ```bash
-postcli send --template template.txt --contacts contacts.csv --subject "Hello"
+postcli send --template template.txt --contacts contacts.csv
+postcli send --template template.txt --contacts contacts.csv --subject "Quick question for {{ name }}"
 ```
 
 ### Commands
@@ -73,7 +74,7 @@ postcli send --template template.txt --contacts contacts.csv --subject "Hello"
 |--------|-------------|
 | `--template` | Path to Jinja2 email template (required) |
 | `--contacts` | Path to CSV contacts file (required) |
-| `--subject` | Subject line – use `{{ name }}`, `{{ company }}` for templating |
+| `--subject` | Subject line – default: `Interested in {{ company }}` (use `{{ name }}`, `{{ company }}`) |
 | `--from-name` | Display name for sender |
 | `--delay N` | Seconds to wait between sends (default: 0) |
 | `--limit N` | Max contacts to send to (0 = all) |

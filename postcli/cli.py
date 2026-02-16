@@ -39,7 +39,7 @@ def cli():
 @cli.command()
 @click.option("--template", required=True, help="Path to email template.")
 @click.option("--contacts", required=True, help="Path to CSV contacts file.")
-@click.option("--subject", default="Hello", help="Email subject (use {{ name }}, {{ company }} for templating).")
+@click.option("--subject", default="Interested in {{ company }}", help="Email subject (use {{ name }}, {{ company }} for templating).")
 @click.option("--from-name", default=None, help="Display name for sender (default: EMAIL_ADDRESS).")
 @click.option("--delay", type=int, default=0, help="Seconds to wait between sends (default: 0).")
 @click.option("--limit", type=int, default=0, help="Max contacts to send to (0 = all).")
